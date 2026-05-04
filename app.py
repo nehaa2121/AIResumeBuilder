@@ -1,7 +1,14 @@
-from flask import Flask, render_template, request, redirect, session
+from flask import Flask, render_template, request, redirect, session, send_file
 import sqlite3
 import os
 from google import genai
+
+# TRY importing pdfkit (for local use)
+try:
+    import pdfkit
+    PDFKIT_AVAILABLE = True
+except:
+    PDFKIT_AVAILABLE = False
 
 app = Flask(__name__)
 app.secret_key = "mysecretkey123"
@@ -236,6 +243,57 @@ def generate_resume():
         ai_output=ai_output,
         ai_skills=ai_skills
     )
+    
+    
+# ---------------- CREATE PDF ----------------
+def create_pdf(data):
+    data = dict(data)
+
+    template = data.get("template")
+    theme_color = data.get("theme_color")
+
+    data.pop("template", None)
+    data.pop("theme_color", None)
+
+    rendered = render_template(
+        "resume.html",
+        **data,
+        template=template,
+        theme_color=theme_color,
+        pdf_mode=True   # IMPORTANT
+    )
+
+    config = pdfkit.configuration(
+        wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
+    )
+
+    options = {
+        'enable-local-file-access': None,
+        'page-size': 'A4',
+        'margin-top': '0mm',
+        'margin-right': '0mm',
+        'margin-bottom': '0mm',
+        'margin-left': '0mm',
+        'encoding': "UTF-8"
+    }
+
+    pdfkit.from_string(
+        rendered,
+        "resume.pdf",
+        configuration=config,
+        options=options
+    )
+
+# ---------------- DOWNLOAD ----------------
+@app.route("/download")
+def download():
+    data = session.get("user_data")
+
+    if not data:
+        return "No resume found"
+
+    create_pdf(data)
+    return send_file("resume.pdf", as_attachment=True)      
 
 # ---------------- AI ANALYSIS ----------------
 @app.route("/ai_analysis")
@@ -272,5 +330,4 @@ def logout():
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
