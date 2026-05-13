@@ -212,7 +212,7 @@ Output:
 
         text = response.text.strip()
 
-        # 🔥 EXTRA SAFETY CUT (IMPORTANT)
+        # EXTRA SAFETY CUT (IMPORTANT)
         lines = text.split("\n")
         short_output = "\n".join(lines[:4])
 
@@ -431,4 +431,4 @@ def admin_logout():
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    app.run()
+    app.run(host="0.0.0.0", port=10000)
