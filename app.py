@@ -1,9 +1,9 @@
 from flask import Flask, render_template, request, redirect, session, send_file
 import sqlite3
 import os
-from google import genai
+import google.generativeai as genai
 
-# TRY importing pdfkit (for local use)
+# pdfkit (for local use)
 try:
     import pdfkit
     PDFKIT_AVAILABLE = True
@@ -11,10 +11,10 @@ except:
     PDFKIT_AVAILABLE = False
 
 app = Flask(__name__)
-app.secret_key = "mysecretkey123"
+app.secret_key = os.environ.get("SECRET_KEY", "fallback")
 
 # ---------------- AI CLIENT ----------------
-client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
+genai.configure(api_key=os.environ.get("GEMINI_API_KEY"))
 
 # ---------------- DATABASE INIT ----------------
 def init_db():
@@ -129,13 +129,13 @@ def auto_generate():
         if "developer" in job_role:
             template = "chronological"
         elif "student" in job_role:
-            template = "functional"
+            template = "elegant_gray"
         elif "designer" in job_role:
-            template = "creative"
+            template = "creative_resume"
         elif "manager" in job_role:
-            template = "combination"
+            template = "combination_resume"
         else:
-            template = "functional"
+            template = "simple"
 
         return redirect(f'/form?template={template}')
 
@@ -165,10 +165,9 @@ Skills: {skills}
 """
 
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
+        model = genai.GenerativeModel("gemini-1.5-flash")
+
+        response = model.generate_content(prompt)
 
         text = response.text.strip()
 
@@ -183,23 +182,51 @@ Skills: {skills}
         return "Motivated graduate with strong technical skills and a passion for growth."
 
 def ai_resume_improvement(skills, projects, experience):
-    prompt = f"Improve resume:\nSkills: {skills}\nProjects: {projects}\nExperience: {experience}"
+    prompt = f"""
+You are an AI resume tool.
+
+Give VERY SHORT output.
+
+Rules:
+- Only 4 bullet points
+- Max 6 words per point
+- No explanation
+- No extra text
+- No headings
+
+Resume:
+Skills: {skills}
+Projects: {projects}
+Experience: {experience}
+
+Output:
+• ...
+• ...
+• ...
+• ...
+"""
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
-        return response.text.strip()
+        model = genai.GenerativeModel("gemini-1.5-flash")
+
+        response = model.generate_content(prompt)
+
+        text = response.text.strip()
+
+        # 🔥 EXTRA SAFETY CUT (IMPORTANT)
+        lines = text.split("\n")
+        short_output = "\n".join(lines[:4])
+
+        return short_output
+
     except:
-        return "• Add projects\n• Use action verbs\n• Improve formatting"
+        return "• Add projects\n• Use action verbs\n• Improve skills\n• Clean format"
 
 def ai_skill_suggestions(skills, degree):
     prompt = f"Suggest 3 skills for {degree} with {skills}"
     try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=prompt
-        )
+        model = genai.GenerativeModel("gemini-1.5-flash")
+
+        response = model.generate_content(prompt)
         return response.text.strip()
     except:
         return "Communication, Problem-solving, Teamwork"
@@ -244,56 +271,6 @@ def generate_resume():
         ai_skills=ai_skills
     )
     
-    
-# ---------------- CREATE PDF ----------------
-def create_pdf(data):
-    data = dict(data)
-
-    template = data.get("template")
-    theme_color = data.get("theme_color")
-
-    data.pop("template", None)
-    data.pop("theme_color", None)
-
-    rendered = render_template(
-        "resume.html",
-        **data,
-        template=template,
-        theme_color=theme_color,
-        pdf_mode=True   # IMPORTANT
-    )
-
-    config = pdfkit.configuration(
-        wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
-    )
-
-    options = {
-        'enable-local-file-access': None,
-        'page-size': 'A4',
-        'margin-top': '0mm',
-        'margin-right': '0mm',
-        'margin-bottom': '0mm',
-        'margin-left': '0mm',
-        'encoding': "UTF-8"
-    }
-
-    pdfkit.from_string(
-        rendered,
-        "resume.pdf",
-        configuration=config,
-        options=options
-    )
-
-# ---------------- DOWNLOAD ----------------
-@app.route("/download")
-def download():
-    data = session.get("user_data")
-
-    if not data:
-        return "No resume found"
-
-    create_pdf(data)
-    return send_file("resume.pdf", as_attachment=True)      
 
 # ---------------- AI ANALYSIS ----------------
 @app.route("/ai_analysis")
@@ -321,6 +298,64 @@ def ai_analysis():
             "Improve formatting"
         ]
     )
+    
+# ---------------- DOWNLOAD PDF ----------------
+@app.route("/download")
+def download():
+    if not PDFKIT_AVAILABLE:
+        return "PDF download not supported on server yet"
+
+    data = session.get("user_data")
+
+    if not data:
+        return "No resume found"
+
+    template = data.get("template", "simple")
+
+    template_map = {
+        "simple": "simple.html",
+        "modern_blue": "modern_blue.html",
+        "modern_dark": "modern_dark.html",
+        "card_ui": "card_ui.html",
+        "bold_red": "bold_red.html",
+        "professional_green": "professional_green.html",
+        "classic_resume": "classic_resume.html",
+        "creative_gradient": "creative_gradient.html",
+        "elegant_gray": "elegant_gray.html",
+        "minimal_white": "minimal_white.html",
+        "chronological": "chronological.html",
+        "creative": "creative.html",
+        "combination": "combination.html"
+    }
+
+    selected_template = template_map.get(template, "simple.html")
+
+    rendered_html = render_template(
+        selected_template,
+        **data,
+        pdf_mode=True
+    )
+
+    options = {
+        'page-size': 'A4',
+        'margin-top': '0mm',
+        'margin-right': '0mm',
+        'margin-bottom': '0mm',
+        'margin-left': '0mm',
+        'encoding': "UTF-8",
+        'enable-local-file-access': None
+    }
+
+    pdfkit.from_string(rendered_html, "resume.pdf", options=options)
+
+    return send_file("resume.pdf", as_attachment=True)
+
+"""config = pdfkit.configuration(
+    wkhtmltopdf=r"C:\Program Files\wkhtmltopdf\bin\wkhtmltopdf.exe"
+)
+"""
+
+    
 
 # ---------------- LOGOUT ----------------
 @app.route("/logout")
@@ -328,6 +363,72 @@ def logout():
     session.clear()
     return redirect("/login")
 
+# ---------------- ADMIN LOGIN ----------------
+@app.route("/admin", methods=["GET", "POST"])
+def admin():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+
+        if username == "admin" and password == "admin123":
+            session["admin"] = True
+            return redirect("/admin_dashboard")
+        else:
+            return "Invalid Admin Credentials"
+
+    return render_template("admin_login.html")
+
+# ---------------- ADMIN DASHBOARD ----------------
+@app.route("/admin_dashboard")
+def admin_dashboard():
+    if "admin" not in session:
+        return redirect("/admin")
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM users")
+    users = cursor.fetchall()
+
+    cursor.execute("SELECT * FROM resumes")
+    resumes = cursor.fetchall()
+
+    conn.close()
+
+    return render_template(
+        "admin_dashboard.html",
+        users=users,
+        resumes=resumes
+    )
+    
+@app.route("/delete_user/<int:id>")
+def delete_user(id):
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM users WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+
+    return redirect("/admin_dashboard")
+
+@app.route("/delete_resume/<int:id>")
+def delete_resume(id):
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+
+    cursor.execute("DELETE FROM resumes WHERE id=?", (id,))
+    conn.commit()
+    conn.close()
+
+    return redirect("/admin_dashboard")
+
+@app.route("/admin_logout")
+def admin_logout():
+    session.pop("admin", None)
+    return redirect("/admin")
+
+
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    app.run()
